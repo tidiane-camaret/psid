@@ -1,0 +1,9 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+old/
+CSP_example/
+may/
+*.fif
+*.pickle
+.idea/
