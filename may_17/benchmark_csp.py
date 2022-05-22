@@ -6,7 +6,7 @@ import xgboost as xgb
 
 sys.path.append("..")
 from utils.csp_example import custom_CSP, LDA, Pipeline
-from utils.features_utils import CSP_LDA_EVAL, random_crossval, block_crossval
+from utils.features_utils import CSP_LDA_features, block_crossval
 
 csp_decoder = custom_CSP(n_components=4, log=True,
                          cov_kwargs={'method': 'ledoit_wolf'})
@@ -28,7 +28,7 @@ for exp in exps:
         tfb = tfa + 2
         print("PROCESSING RANGE " + str(tfa) + ", " + str(tfb))
 
-        X, y, blocks_idx = CSP_LDA_EVAL(epochs, ica_model, tf=[tfa, tfb])
+        X, y, blocks_idx = CSP_LDA_features(epochs, ica_model, tf=[tfa, tfb])
 
         with open('results/csp_' + exp + '.pickle', 'wb') as handle:
             pickle.dump((X, y, blocks_idx), handle, protocol=pickle.HIGHEST_PROTOCOL)

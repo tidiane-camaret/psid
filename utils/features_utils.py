@@ -17,79 +17,8 @@ def power_average(fft_signal, all_freq_ranges):
 
 ### get (PSID + PSD) and (PSID + average) features, by time segment
 
-def psid_param_eval(Y,
-                    Z,
-                    blk_data,
-                    i=20,
-                    n1=8,
-                    nb_epochs_=132,
-                    step_epochs=1,
-                    freq_ranges=[(5, 8), (8, 13), (13, 30)],
-                    freq_nbs=[1, 3, 3]):
-    # frequency buckets
 
-    all_freq_ranges = []
-    for i_, f in enumerate(freq_ranges):
-        points = np.linspace(f[0], f[1], num=freq_nbs[i_] + 1)
-        all_freq_ranges += [(points[i_], points[i_ + 1]) for i in range(len(points) - 1)]
-    print(all_freq_ranges)
-
-    nb_timesteps = Y.shape[2]  # nb timesteps per epoch (2301)
-
-    # number/length of segments for
-    nb_segments = 3
-    segment_len = int(nb_timesteps / 5)
-    ###utils for splitting psd results into frequency buckets
-
-    sfreq = 200  # sampling frequency
-
-    nx = n1
-
-    X_mean = []
-    X_psd_m = []
-    y = []
-    blocks_idx = []
-
-    for ei in range(0, nb_epochs_, step_epochs):
-        print(ei)
-        tstart = time.time()
-        Ye, Ze = Y[ei], Z[ei]
-
-        idSys = PSID.PSID(np.transpose(Ye), np.transpose(Ze), nx, n1, i)
-        zPred, yPred, xPred = idSys.predict(np.transpose(Ye))
-
-        nb_timesteps = len(np.transpose(xPred)[0])
-        segment_len = int(nb_timesteps / 5)
-
-        # for all segments of interest in the epoch
-        for s in range(nb_segments):
-            signal = np.array(np.transpose(xPred)[:, s * segment_len:(s + 1) * segment_len])
-
-            # mean signal over segment
-            X_mean.append(np.mean(signal, axis=1))
-
-            # psd multitaper over segment
-            fft_signal = mne.time_frequency.psd_array_multitaper(signal, sfreq=sfreq, fmin=5, fmax=30, verbose=None)
-            X_psd_m.append(np.ndarray.flatten(power_average(fft_signal, all_freq_ranges)))
-
-            #print(power_average(fft_signal, all_freq_ranges).shape)
-
-            y.append(np.mean(Ze[-1, :]))
-            blocks_idx.append(blk_data[ei])
-
-        print(f"Finished after {time.time() - tstart} seconds")
-
-    # make y as binary variable
-    y = [1 if yi > 0.15 else 0 for yi in y]
-
-    X_mean = np.array(X_mean)
-    X_psd_m = np.array(X_psd_m)
-    y = np.array(y)
-
-    return X_mean, X_psd_m, y, blocks_idx
-
-
-def CSP_LDA_EVAL(epochs, ica_model, tf=[25.38, 30.38]):
+def CSP_LDA_features(epochs, ica_model, tf=[25.38, 30.38]):
 
     # Get stim and block data
     stim_idx = epochs.info['ch_names'].index("stim")
@@ -119,35 +48,101 @@ def CSP_LDA_EVAL(epochs, ica_model, tf=[25.38, 30.38]):
     y = [1 if yi > 0.15 else 0 for yi in y]
     y = np.asarray(y)
 
-    print(y)
-
-    # ------ decoding pipeline
-    csp_decoder = custom_CSP(n_components=4, log=True,
-                             cov_kwargs={'method': 'ledoit_wolf'})
-    model = Pipeline(steps=[('spatial_filtering', csp_decoder),
-                            ('decoder', LDA())])
-
     X = np.asarray(ica_mini_epochs, dtype='object')
 
     return X, y, blk_data[non_empty_idx]
 
 
 
-def PSID_EVAL(epochs, ica_model):
+def PSID_features(epochs, ica_model, include_stim = True):
+
+    #stim labels
+    stim_idx = epochs.info['ch_names'].index('stim')
+    stim_data = np.nanmean(epochs.get_data()[:, stim_idx, :], axis=1)
+
+
+    #block labels
     blk_idx = epochs.info['ch_names'].index('blk_idx')
     blk_data = np.nanmean(epochs.get_data()[:, blk_idx, :], axis=1)
 
-    pick_ch = [ch for ch in epochs.info['ch_names'] if ch in ica_model.info['ch_names']]
-    epochs_ica = project_ica(epochs.copy().pick_types(eeg=True).pick_channels(pick_ch), ica_model)
+    #EEG data
+    pick_ch_y = [ch for ch in epochs.info['ch_names'] if ch in ica_model.info['ch_names']]
+    epochs_ica = project_ica(epochs.copy().pick_types(eeg=True).pick_channels(pick_ch_y), ica_model)
     data_Y = split_to_psid_model(epochs_ica)
     data_Y = normalize_and_fill_nan(data_Y)
     Y = data_Y['Y']
-    print(Y.shape)
-    data_Z = split_to_psid_model(epochs.copy())
+
+    #Behavioral data
+    if include_stim:
+        pick_ch_z = epochs.info['ch_names']
+    else:
+        pick_ch_z = [ch for ch in epochs.info['ch_names'] if ch != "stim"]
+
+    data_Z = split_to_psid_model(epochs.copy().pick_channels(pick_ch_z))
     data_Z = normalize_and_fill_nan(data_Z)
     Z = data_Z['Z']
 
-    X_mean, X_psd_m, y, blocks_idx = psid_param_eval(Y, Z, blk_data, i=5, n1=20, nb_epochs_=Y.shape[0])
+    #parameters of the feature extraction
+    #PSID
+    i = 5
+    n1 = 20
+    nx = n1
+
+    #frequency split
+    freq_ranges = [(5, 8), (8, 13), (13, 30)]
+    freq_nbs = [1, 3, 3]
+
+    all_freq_ranges = []
+    for i_, f in enumerate(freq_ranges):
+        points = np.linspace(f[0], f[1], num=freq_nbs[i_] + 1)
+        all_freq_ranges += [(points[i_], points[i_ + 1]) for i in range(len(points) - 1)]
+    print(all_freq_ranges)
+
+    nb_segments = 3
+    nb_epochs_ = Y.shape[0]
+    step_epochs = 1
+    sfreq = 200  # sampling frequency
+
+    X_mean = []
+    X_psd_m = []
+    y = []
+    blocks_idx = []
+
+    for ei in range(0, nb_epochs_, step_epochs):
+        print(ei)
+        tstart = time.time()
+        Ye, Ze = Y[ei], Z[ei]
+        print(Ye.shape,Ze.shape)
+
+        idSys = PSID.PSID(np.transpose(Ye), np.transpose(Ze), nx, n1, i)
+        zPred, yPred, xPred = idSys.predict(np.transpose(Ye))
+
+        nb_timesteps = len(np.transpose(xPred)[0])
+        segment_len = int(nb_timesteps / 5)
+
+        # for all segments of interest in the epoch
+        for s in range(nb_segments):
+            signal = np.array(np.transpose(xPred)[:, s * segment_len:(s + 1) * segment_len])
+
+            # mean signal over segment
+            X_mean.append(np.mean(signal, axis=1))
+
+            # psd multitaper over segment
+            fft_signal = mne.time_frequency.psd_array_multitaper(signal, sfreq=sfreq, fmin=5, fmax=30, verbose=None)
+            X_psd_m.append(np.ndarray.flatten(power_average(fft_signal, all_freq_ranges)))
+
+            y.append(stim_data[ei])
+            blocks_idx.append(blk_data[ei])
+
+        print(f"Finished after {time.time() - tstart} seconds")
+
+    # make y as binary variable
+    y = [1 if yi > 0.15 else 0 for yi in y]
+
+    X_mean = np.array(X_mean)
+    X_psd_m = np.array(X_psd_m)
+    y = np.array(y)
+
 
     return X_psd_m, y, blocks_idx
 
@@ -161,7 +156,7 @@ def random_crossval(X, y, model, metric = auc_scoring, do_plot=False):
     splits = list(cv.split(X, y))
     scorer = make_scorer(metric)
     scores = []
-    print(splits)
+    #print(splits)
 
     for isplit, (ix_train, ix_test) in enumerate(splits):
         print("=" * 80)
@@ -251,4 +246,75 @@ def block_crossval(X, y, model_class, blk, metric = roc_auc_score, do_plot=False
     plt.show()
     print(f"Scores: {scores} - {np.mean(scores):.2%}")
     
+    
+def psid_param_eval(Y,
+                    Z,
+                    blk_data,
+                    i=20,
+                    n1=8,
+                    nb_epochs_=132,
+                    step_epochs=1,
+                    freq_ranges=[(5, 8), (8, 13), (13, 30)],
+                    freq_nbs=[1, 3, 3]):
+    # frequency buckets
+
+    all_freq_ranges = []
+    for i_, f in enumerate(freq_ranges):
+        points = np.linspace(f[0], f[1], num=freq_nbs[i_] + 1)
+        all_freq_ranges += [(points[i_], points[i_ + 1]) for i in range(len(points) - 1)]
+    print(all_freq_ranges)
+
+    nb_timesteps = Y.shape[2]  # nb timesteps per epoch (2301)
+
+    # number/length of segments for
+    nb_segments = 3
+    segment_len = int(nb_timesteps / 5)
+    ###utils for splitting psd results into frequency buckets
+
+    sfreq = 200  # sampling frequency
+
+    nx = n1
+
+    X_mean = []
+    X_psd_m = []
+    y = []
+    blocks_idx = []
+
+    for ei in range(0, nb_epochs_, step_epochs):
+        print(ei)
+        tstart = time.time()
+        Ye, Ze = Y[ei], Z[ei]
+
+        idSys = PSID.PSID(np.transpose(Ye), np.transpose(Ze), nx, n1, i)
+        zPred, yPred, xPred = idSys.predict(np.transpose(Ye))
+
+        nb_timesteps = len(np.transpose(xPred)[0])
+        segment_len = int(nb_timesteps / 5)
+
+        # for all segments of interest in the epoch
+        for s in range(nb_segments):
+            signal = np.array(np.transpose(xPred)[:, s * segment_len:(s + 1) * segment_len])
+
+            # mean signal over segment
+            X_mean.append(np.mean(signal, axis=1))
+
+            # psd multitaper over segment
+            fft_signal = mne.time_frequency.psd_array_multitaper(signal, sfreq=sfreq, fmin=5, fmax=30, verbose=None)
+            X_psd_m.append(np.ndarray.flatten(power_average(fft_signal, all_freq_ranges)))
+
+            #print(power_average(fft_signal, all_freq_ranges).shape)
+
+            y.append(np.mean(Ze[-1, :]))
+            blocks_idx.append(blk_data[ei])
+
+        print(f"Finished after {time.time() - tstart} seconds")
+
+    # make y as binary variable
+    y = [1 if yi > 0.15 else 0 for yi in y]
+
+    X_mean = np.array(X_mean)
+    X_psd_m = np.array(X_psd_m)
+    y = np.array(y)
+
+    return X_mean, X_psd_m, y, blocks_idx
 """
