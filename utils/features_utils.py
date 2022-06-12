@@ -107,6 +107,7 @@ def PSID_features(epochs, ica_model, include_stim = True):
     X_psd_m = []
     y = []
     blocks_idx = []
+    Cz_list = []
 
     for ei in range(0, nb_epochs_, step_epochs):
         print(ei)
@@ -116,6 +117,7 @@ def PSID_features(epochs, ica_model, include_stim = True):
 
         idSys = PSID.PSID(np.transpose(Ye), np.transpose(Ze), nx, n1, i)
         zPred, yPred, xPred = idSys.predict(np.transpose(Ye))
+        Cz_list.append(idSys.Cz)
 
         nb_timesteps = len(np.transpose(xPred)[0])
         segment_len = int(nb_timesteps / 5)
@@ -143,8 +145,10 @@ def PSID_features(epochs, ica_model, include_stim = True):
     X_psd_m = np.array(X_psd_m)
     y = np.array(y)
 
-
-    return X_psd_m, y, blocks_idx
+    return {"X" : X_psd_m,
+            "y" : y,
+            "blocks_idx" : blocks_idx,
+            "Cz_list" : Cz_list }
 
 
 
