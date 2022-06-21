@@ -9,20 +9,22 @@ from utils.taper_epochs import taper_epoch_bounds, concat_epochs_data
 from utils.psid_standalone_original import split_to_psid_model, normalize_and_fill_nan
 from utils.features_utils import power_average
 import scipy.stats as stats
-
+import time
 import xgboost as xgb
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, make_scorer
 from sklearn.model_selection import KFold
 
-cv = KFold(n_splits=5, shuffle=True)
+
 scorer = make_scorer(accuracy_score)
-model = xgb.XGBClassifier(max_depth=5,
+xgb_model = xgb.XGBClassifier(max_depth=5,
                           n_estimators=10,
                           n_jobs=3,
                           eval_metric="logloss",
                           use_label_encoder=False)
 
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+lda_model = LinearDiscriminantAnalysis("eigen",shrinkage="auto")
 
 def data_reconstruction(epochs, ica_model,
                   behav_var="all", #"stim", "no_stim",
@@ -86,11 +88,11 @@ def data_reconstruction(epochs, ica_model,
 
         # get predicted Y and Z 
         
-        Z_true = Z[ix_test]
-        Y_true = Y[ix_test]
+        #Z_true = Z[ix_test]
+        #Y_true = Y[ix_test]
 
-        Z_pred = np.asarray([np.transpose(idSys.predict(np.transpose(Y[ei]))[0]) for ei in ix_test])
-        Y_pred = np.asarray([np.transpose(idSys.predict(np.transpose(Y[ei]))[1]) for ei in ix_test])
+        #Z_pred = np.asarray([np.transpose(idSys.predict(np.transpose(Y[ei]))[0]) for ei in ix_test])
+        #Y_pred = np.asarray([np.transpose(idSys.predict(np.transpose(Y[ei]))[1]) for ei in ix_test])
         
         X_train = []
         y_train = []
@@ -121,10 +123,10 @@ def data_reconstruction(epochs, ica_model,
 
         result_dicts.append(
             {
-                "Z_true" : Z_true,
-                "Z_pred" : Z_pred,
-                "Y_true" : Y_true,
-                "Y_pred" : Y_pred,
+                #"Z_true" : Z_true,
+                #"Z_pred" : Z_pred,
+                #"Y_true" : Y_true,
+                #"Y_pred" : Y_pred,
 
                 "X_train" : X_train,
                 "y_train" : y_train,
@@ -161,61 +163,79 @@ def latent_to_features(xPred):
     
     return X_psd_m
 
-def psid_metrics(result_dicts):
+def psid_metrics(result_dicts, n1):
 
-    dist = []
-    corr = []
-    scores = []
-    scores_test_only = []
+    xgb_fi = []
+    xgb_scores = []
+    lda_scores = []
 
     for split_idx, res in enumerate(result_dicts):
 
+        
+        """
         Z_true = res["Z_true"]
         Z_pred = res["Z_pred"]
         Y_true = res["Y_true"]
         Y_pred = res["Y_pred"]
+        """
         X_train = res["X_train"]
         y_train = res["y_train"]
         X_test = res["X_test"]
         y_test = res["y_test"]
 
 
+        """
         Z_true_concat = np.hstack(Z_true) # (n_channels, n_epochs*n_times)
         Z_pred_concat = np.hstack(Z_pred) # (n_channels, n_epochs*n_times)
-
+        
 
         Z_kendall = np.asarray([stats.kendalltau(Zt, Zp)[0] for Zt, Zp in zip(Z_true_concat, Z_pred_concat)])
         Z_dist = np.linalg.norm(Z_true_concat-Z_pred_concat, axis=1)
         
         corr.append(Z_kendall[-1])
         dist.append(Z_dist[-1])
+        """
 
-        model.fit(X_train,y_train)
-        scores.append(scorer(model,X_test,y_test))
+        xgb_model.fit(X_train,y_train)
+        xgb_scores.append(scorer(xgb_model,X_test,y_test))
+        xgb_fi.append(xgb_model.feature_importances_.reshape((7, n1)))
+
+        lda_model.fit(X_train,y_train)
+        lda_scores.append(scorer(lda_model,X_test,y_test))
+
+        """
 
         classif_splits = list(cv.split(X_test, y_test))
         for isplit, (classif_ix_train, classif_ix_test) in enumerate(classif_splits):
             model.fit(X_test[classif_ix_train], y_test[classif_ix_train])
 
             scores_test_only.append(scorer(model, X_test[classif_ix_test], y_test[classif_ix_test]))
+        """
 
-    print(scores,np.mean(scores))
-    print(scores_test_only,np.mean(scores_test_only))
-    return corr, dist, scores, scores_test_only
+    print(xgb_scores,np.mean(xgb_scores))
+    print(lda_scores,np.mean(lda_scores))
+    return xgb_scores, xgb_fi, lda_scores
 
 
 exps = [str(n) for n in ["2"]]
-behav_var_list = ["all", "stim", "no_stim"]
+behav_var_list = ["all"]
+behav_var = "all"
 n1_list = [2,5,10,15,20,30]
 n1 = 15
-corr_list, dist_list, scores_list, scores_test_only_list = [], [], [], []
+xgb_scores_list, xgb_fi_list, lda_scores_list, times_list = [], [], [], []
 
 
 for exp in exps:
-    for behav_var in behav_var_list:
+    for n1 in n1_list:
+        print("n1:",n1)
+        
+        tstart = time.time()
+        
+        
         epochs = mne.read_epochs("data/VP" + exp + "_epo.fif")
         ica_model = mne.preprocessing.read_ica("data/VP" + exp + "_ica.fif")
 
+        
         result_dicts = data_reconstruction(epochs, 
                                             ica_model, 
                                             behav_var=behav_var,
@@ -224,27 +244,35 @@ for exp in exps:
                                             )
 
 
-        with open('results/psid_features_' + exp + "_" + behav_var + "_n1_" + str(n1) + '.pickle', 'wb') as handle:
+        
+        with open('results/psid_features_' + exp + "_" + behav_var + "_n1_" + str(n1) + '_hpo.pickle', 'wb') as handle:
             pickle.dump(result_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        
 
-        corr, dist, scores, scores_test_only = psid_metrics(result_dicts)
-        corr_list.append(corr)
-        dist_list.append(dist)
-        scores_list.append(scores)
-        scores_test_only_list.append(scores_test_only)
+        #result_dicts = pickle.load(open('results/psid_features_' + exp + "_" + behav_var + "_n1_" + str(n1) + '_hpo.pickle','rb'))
+        
+        xgb_scores, xgb_fi, lda_scores = psid_metrics(result_dicts, n1)
+        xgb_scores_list.append(xgb_scores)
+        xgb_fi_list.append(xgb_fi)
+        lda_scores_list.append(lda_scores)
+        times_list.append(time.time()-tstart)
 
-    plt.boxplot(corr_list, labels=behav_var_list)
-    plt.title("Kendall's Tau")
+
+    fig, axs = plt.subplots(1,2)
+    axs[0].boxplot(xgb_scores_list, labels=n1_list)
+    axs[0].set_title("xgb scores for different n1")
+    axs[1].boxplot(lda_scores_list, labels=n1_list)
+    axs[1].set_title("lda scores for different n1")
     plt.show()
-    plt.boxplot(dist_list, labels=behav_var_list)
-    plt.title("Distance")
+    plt.plot(n1_list, times_list)
+    plt.title("time for different n1")
     plt.show()
-    plt.boxplot(scores_list, labels=behav_var_list)
-    plt.title("classif accuracy")
-    plt.show()
-    plt.boxplot(scores_test_only_list, labels=behav_var_list)
-    plt.title("classif accuracy (on test data only)")
-    plt.show()
+    for xgb_fi in xgb_fi_list:
+        fig, axs = plt.subplots(1,len(xgb_fi))
+        for i,x in enumerate(xgb_fi):
+            axs[i].imshow(x)
+        plt.show()
+
 
 
 

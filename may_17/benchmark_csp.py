@@ -14,7 +14,8 @@ csp_decoder = custom_CSP(n_components=4, log=True,
 model = Pipeline(steps=[('spatial_filtering', csp_decoder),
                         ('decoder', LDA())])
 
-exps = [str(n) for n in range(3, 11)]
+#exps = [str(n) for n in range(3, 11)]
+exps = ["1"]
 
 for exp in exps:
     epochs = mne.read_epochs("data/VP" + exp + "_epo.fif").crop(0, 6)
@@ -44,5 +45,5 @@ for exp in exps:
         pickle.dump(bscores, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-plt.boxplot(bscores)
+plt.boxplot(bscores,[str(n)+ " " + str(n+2) for n in search_range])
 plt.show()

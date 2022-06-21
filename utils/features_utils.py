@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import PSID
 import sklearn
 from utils.psid_standalone_original import *
-
+from sklearn.model_selection import LeavePGroupsOut
 
 def power_average(fft_signal, all_freq_ranges):
     powers = []
@@ -177,10 +177,16 @@ def random_crossval(X, y, model, metric = auc_scoring, do_plot=False):
 
     return scores
 
-def block_crossval(X, y, model_class, blk, metric = roc_auc_score, do_plot=False, do_feature_imp=False):
+def block_crossval(X, y, model_class, blk, metric = roc_auc_score, do_plot=False, do_feature_imp=False,leaveP=True):
 
-    leaveNout = MyLeaveNOut()
+    if leaveP:
+        leaveNout = LeavePGroupsOut(1)
+    else:
+        leaveNout = MyLeaveNOut()
     splits = leaveNout.split(X, y, blk)
+
+    
+
     scorer = make_scorer(metric)
     scores = []
     feature_imp = []
