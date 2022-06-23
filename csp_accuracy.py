@@ -15,7 +15,7 @@ model = Pipeline(steps=[('spatial_filtering', csp_decoder),
                         ('decoder', LDA())])
 
 #exps = [str(n) for n in range(3, 11)]
-exps = ["8","9","10"]
+exps = ["1"]
 
 for exp in exps:
     epochs = mne.read_epochs("data/VP" + exp + "_epo.fif").crop(0, 6)
@@ -32,7 +32,7 @@ for exp in exps:
 
         X, y, blocks_idx = CSP_LDA_features(epochs, ica_model, tf=[tfa, tfb])
 
-        with open('results/csp_' + exp + '_'+ str(tfa) +'.pickle', 'wb') as handle:
+        with open('results/csp_' + exp + '.pickle', 'wb') as handle:
             pickle.dump((X, y, blocks_idx), handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         """

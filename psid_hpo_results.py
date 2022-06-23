@@ -217,23 +217,22 @@ def psid_metrics(result_dicts, n1):
     return xgb_scores, xgb_fi, lda_scores
 
 
-exps = [str(n) for n in [3,4,7,8,9,10]]
+exps = [str(n) for n in [1]]#2,3,4,7,8]]
 behav_var_list = ["all"]
 behav_var = "all"
 n1_list = [2,5,10,15,20,30]
-i_psid_list = [20,30]
 n1 = 15
 xgb_scores_list, xgb_fi_list, lda_scores_list, times_list = [], [], [], []
 
 
 for exp in exps:
-    #for i_psid in i_psid_list:
     for n1 in n1_list:
         print("n1:",n1)
         
         tstart = time.time()
         
         
+        """
         epochs = mne.read_epochs("data/VP" + exp + "_epo.fif")
         ica_model = mne.preprocessing.read_ica("data/VP" + exp + "_ica.fif")
 
@@ -242,15 +241,17 @@ for exp in exps:
                                             ica_model, 
                                             behav_var=behav_var,
                                             n1=n1,
-                                            i_psid=i_psid
+                                            i_psid=15
                                             )
 
 
         
-        with open('results/psid_features_' + exp + "_" + behav_var + "_i_psid_" + str(i_psid) + '_hpo.pickle', 'wb') as handle:
+        with open('results/psid_features_' + exp + "_" + behav_var + "_n1_" + str(n1) + '_hpo.pickle', 'wb') as handle:
             pickle.dump(result_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
-
+        """
+        result_dicts = pickle.load(open('results/psid_features_' + exp + "_" + behav_var + "_n1_" + str(n1) + '_hpo.pickle','rb'))
+        
         xgb_scores, xgb_fi, lda_scores = psid_metrics(result_dicts, n1)
         xgb_scores_list.append(xgb_scores)
         xgb_fi_list.append(xgb_fi)
@@ -258,12 +259,14 @@ for exp in exps:
         times_list.append(time.time()-tstart)
 
 
-    """
+    
     fig, axs = plt.subplots(1,2)
     axs[0].boxplot(xgb_scores_list, labels=n1_list)
     axs[0].set_title("xgb scores for different n1")
+    axs[0].set_ylim(0,1)
     axs[1].boxplot(lda_scores_list, labels=n1_list)
     axs[1].set_title("lda scores for different n1")
+    axs[1].set_ylim(0,1)
     plt.show()
     plt.plot(n1_list, times_list)
     plt.title("time for different n1")
@@ -271,9 +274,15 @@ for exp in exps:
     for xgb_fi in xgb_fi_list:
         fig, axs = plt.subplots(1,len(xgb_fi))
         for i,x in enumerate(xgb_fi):
-            axs[i].imshow(x)
+            axs[i].imshow(x,vmin=0, vmax=1)
         plt.show()
 
-    """
+    xgb_scores_list = []
+    xgb_fi_list = []
+    lda_scores_list = []
+    times_list = []
+
+
+    
 
 

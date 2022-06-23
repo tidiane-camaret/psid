@@ -180,7 +180,7 @@ def random_crossval(X, y, model, metric = auc_scoring, do_plot=False):
 def block_crossval(X, y, model_class, blk, metric = roc_auc_score, do_plot=False, do_feature_imp=False,leaveP=True):
 
     if leaveP:
-        leaveNout = LeavePGroupsOut(1)
+        leaveNout = LeavePGroupsOut(2)
     else:
         leaveNout = MyLeaveNOut()
     splits = leaveNout.split(X, y, blk)
