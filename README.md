@@ -1,8 +1,10 @@
-# psid + LDA on EEG data 
-A script allowing to train a PSID + LDA pipeline on EEG data for behavioral state classification. 
+# PSID on EEG + Behavioral time series
 
 
-Hyperparameter optimisation : 
+The psid_accuracy.py script allows to train a PSID + LDA pipeline on EEG data for behavioral state classification. 
 
-It is possible to perform HPO on a given dataset by using the psid_hpo.py script.
+
+# Hyperparameter optimisation
+
+It is also possible to perform HPO on on PSID n1, nx and i parameters with a given dataset, by using the psid_hpo.py script.
 HPO uses the BOHB library
