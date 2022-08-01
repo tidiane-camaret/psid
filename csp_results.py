@@ -15,7 +15,7 @@ model = Pipeline(steps=[('spatial_filtering', csp_decoder),
                         ('decoder', LDA())])
 
 #exps = [str(n) for n in range(3, 11)]
-exps = ["10"]
+exps = ["2"]
 
 for exp in exps:
     #epochs = mne.read_epochs("data/VP" + exp + "_epo.fif").crop(0, 6)

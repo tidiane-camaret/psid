@@ -15,21 +15,21 @@ model = Pipeline(steps=[('spatial_filtering', csp_decoder),
                         ('decoder', LDA())])
 
 #exps = [str(n) for n in range(3, 11)]
-exps = ["1"]
+exps = ["8"]
 
 for exp in exps:
-    epochs = mne.read_epochs("data/VP" + exp + "_epo.fif").crop(0, 6)
+    epochs = mne.read_epochs("data/VP" + exp + "_300hz_epo.fif").crop(0, 6)
     ica_model = mne.preprocessing.read_ica("data/VP" + exp + "_ica.fif")
 
     bscores_lng = []
     bscores_lno = []
 
-    search_range = range(5, 35, 2)
+    search_range = range(128,132,1) #range(5, 35, 2)
 
     for tfa in search_range:
         tfb = tfa + 2
         print("PROCESSING RANGE " + str(tfa) + ", " + str(tfb))
-
+        """
         X, y, blocks_idx = CSP_LDA_features(epochs, ica_model, tf=[tfa, tfb])
 
         with open('results/csp_' + exp + '.pickle', 'wb') as handle:
@@ -38,7 +38,7 @@ for exp in exps:
         """
         with open('results/csp_'+exp+'.pickle', 'rb') as handle:
             X, y, blocks_idx = pickle.load(handle)
-        """
+        
 
         bscores_lng.append(block_crossval(X, y, model, blocks_idx, metric=accuracy_score, leaveP=True))
         bscores_lno.append(block_crossval(X, y, model, blocks_idx, metric=accuracy_score, leaveP=False))
