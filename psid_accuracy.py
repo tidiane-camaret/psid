@@ -43,7 +43,7 @@ def signal_to_features(epochs,
     sfreq = epochs.info["sfreq"]
 
     
-    result_dicts = []
+    features_dicts = []
 
     # get block and stim data, define crossval splits
     
@@ -88,7 +88,7 @@ def signal_to_features(epochs,
     
 
     for isplit, (ix_train, ix_test) in enumerate(splits):
-        
+
         print("=" * 80)
         print(f"Processing split {isplit + 1}")
 
@@ -136,7 +136,7 @@ def signal_to_features(epochs,
         y_test = np.asarray([1 if yi > 0.15 else 0 for yi in y_test])
         X_test = np.array(X_test)
 
-        result_dicts.append(
+        features_dicts.append(
             {
                 "Z_true" : Z_true,
                 "Z_pred" : Z_pred,
@@ -150,9 +150,9 @@ def signal_to_features(epochs,
             })
 
         with open('results/psid_features_dicts.pickle', 'wb') as handle:
-            pickle.dump(result_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-    return result_dicts
+            pickle.dump(features_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            
+    return features_dicts
 
 
 def latent_to_features(xPred,freq_buckets,sfreq=300):
@@ -231,8 +231,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='PSID_acc')
 
-    parser.add_argument('--exp_idx', type=int, default=1, help='idex of the experiment to run')
-    parser.add_argument('--data_dir', type=str, default='data')
+    parser.add_argument('--exp_idx', type=int, default=1, help='index of the experiment to run')
+    parser.add_argument('--data_dir', type=str, default='data directory')
     parser.add_argument('--nx', type=int, default=15, help='dimension of the latent space')
     parser.add_argument('--n1', type=int, default=15, help='dimension of the behavior-related latent space')
 
@@ -254,13 +254,14 @@ if __name__ == '__main__':
         points = np.linspace(f[0], f[1], num=freq_nbs[i_] + 1)
         fb += [(points[i], points[i + 1]) for i in range(len(points) - 1)]
 
-    i_psid_ratio_list = [0.01,0.02,0.05]
-
-    
-
     time_list = []
+    
+    # grid search on the i_psid_ratio parameter
 
+    i_psid_ratio_list = [0.01,0.02,0.05]
     for i_psid_ratio in i_psid_ratio_list:
+
+        """
 
         epochs = mne.read_epochs(os.path.join(data_dir,"VP" + str(exp_idx) + "_epo.fif"))
         sfreq = epochs.info["sfreq"]
@@ -271,7 +272,7 @@ if __name__ == '__main__':
 
         tstart = time.time()
 
-        result_dicts = signal_to_features(epochs, 
+        features_dicts = signal_to_features(epochs, 
                                             ica_model, 
                                             freq_buckets=fb,
                                             behav_var="all",
@@ -283,10 +284,14 @@ if __name__ == '__main__':
         
 
         with open('results/psid_features_' + str(exp_idx) + "_i_" + str(i_psid) + '.pickle', 'wb') as handle:
-            pickle.dump(result_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(features_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        """
+        with open('results/psid_features_result_dicts.pickle', 'rb') as handle:
+            features_dicts = pickle.load(handle)#, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-        corr, dist, lda_scores, xgb_scores, xgb_fi, lda_scores_test_only = psid_metrics(result_dicts)
+
+        corr, dist, lda_scores, xgb_scores, xgb_fi, lda_scores_test_only = psid_metrics(features_dicts)
         corr_list.append(corr)
         dist_list.append(dist)
         lda_scores_list.append(lda_scores)
@@ -300,10 +305,10 @@ if __name__ == '__main__':
     plt.scatter(x=range(len(time_list)),y=time_list )
 
     plt.boxplot(corr_list, labels=label_list)
-    plt.title("Kendall's Tau")
+    plt.title("Kendall's Tau between original and predicted behavioral data")
     plt.show()
     plt.boxplot(dist_list, labels=label_list)
-    plt.title("Distance")
+    plt.title("Distance between original and predicted behavioral data")
     plt.show()
 
     plt.boxplot(lda_scores_list, labels=label_list)
@@ -316,10 +321,14 @@ if __name__ == '__main__':
     plt.boxplot(xgb_scores_list, labels=label_list)
     plt.title("xgb classif accuracy")
     plt.show()
-    for xgb_fi in xgb_fi_list:
+
+    for i_psid_idx, xgb_fi in enumerate(xgb_fi_list):
         fig, axs = plt.subplots(1,len(xgb_fi))
+        print(str(i_psid_ratio_list[i_psid_idx]))
+        plt.title("xgb feature importance for i psid ratio = " + str(i_psid_ratio_list[i_psid_idx]))
         for i,x in enumerate(xgb_fi):
             axs[i].imshow(x,vmin=0, vmax=1)
+
         plt.show()
 
 
