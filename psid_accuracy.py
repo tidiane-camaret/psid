@@ -1,21 +1,25 @@
-from sklearn.model_selection import LeavePGroupsOut
-import PSID
-import numpy as np
-import mne
+import argparse
+import os
+import time
 import math
 import pickle
+import numpy as np
+import mne
 import matplotlib.pyplot as plt
+import PSID
+
+from sklearn.model_selection import LeavePGroupsOut
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.metrics import accuracy_score, make_scorer
+from sklearn.model_selection import KFold
+
+import xgboost as xgb
+
 from utils.classif_utils import MyLeaveNOut
 from utils.taper_epochs import taper_epoch_bounds, concat_epochs_data
 from utils.psid_standalone_original import split_to_psid_model, normalize_and_fill_nan
 from utils.features_utils import power_average
 from utils.csp_example import project_ica
-import scipy.stats as stats
-import time
-import xgboost as xgb
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.metrics import accuracy_score, make_scorer
-from sklearn.model_selection import KFold
 
 cv = KFold(n_splits=5, shuffle=True)
 scorer = make_scorer(accuracy_score)
@@ -24,11 +28,12 @@ xgb_model = xgb.XGBClassifier(max_depth=5,
                           n_jobs=3,
                           eval_metric="logloss",
                           use_label_encoder=False)
-model = LinearDiscriminantAnalysis("eigen",shrinkage="auto")
+lda_model = LinearDiscriminantAnalysis("eigen",shrinkage="auto")
 
-def data_reconstruction(epochs, ica_model,
+def signal_to_features(epochs, 
+                        ica_model,
                         freq_buckets,
-                        behav_var="all", #"stim", "no_stim",
+                        behav_var="all",
                         nx = 8,
                         n1 = 8,
                         i_psid = 5
@@ -72,20 +77,18 @@ def data_reconstruction(epochs, ica_model,
 
     pick_ch_y = [ch for ch in epochs.info['ch_names'] if ch in ica_model.info['ch_names']]
 
+    # get EEG data (ICA)
     epochs_ica = project_ica(epochs.copy().pick_types(eeg=True).pick_channels(pick_ch_y), ica_model)
-
-    # get epochs data
-
     epochs_data_normalized = normalize_and_fill_nan(split_to_psid_model(epochs_ica))
-
     Y = epochs_data_normalized["Y"]
 
+    # get behavioral data
     epochs_data_normalized = normalize_and_fill_nan(split_to_psid_model(epochs))
-
     Z = epochs_data_normalized["Z"]
     
 
     for isplit, (ix_train, ix_test) in enumerate(splits):
+        
         print("=" * 80)
         print(f"Processing split {isplit + 1}")
 
@@ -146,7 +149,7 @@ def data_reconstruction(epochs, ica_model,
                 "y_test" : y_test,
             })
 
-        with open('results/psid_features_result_dicts.pickle', 'wb') as handle:
+        with open('results/psid_features_dicts.pickle', 'wb') as handle:
             pickle.dump(result_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return result_dicts
@@ -174,8 +177,10 @@ def psid_metrics(result_dicts):
 
     dist = []
     corr = []
-    scores = []
-    scores_test_only = []
+    lda_scores = []
+    xgb_scores = []
+    xgb_fi = []
+    lda_scores_test_only = []
 
     for split_idx, res in enumerate(result_dicts):
 
@@ -199,104 +204,125 @@ def psid_metrics(result_dicts):
         
         corr.append(Z_kendall[-1])
         dist.append(Z_dist[-1])
-        """
 
-        model.fit(X_train,y_train)
-        scores.append(scorer(model,X_test,y_test))
+        
         """
+        # LDA CLASSIF 
+        lda_model.fit(X_train,y_train)
+        lda_scores.append(scorer(lda_model,X_test,y_test))
 
+        # XGB CLASSIF + FEATURE IMPORTANCE 
+        xgb_model.fit(X_train,y_train)
+        xgb_scores.append(scorer(xgb_model,X_test,y_test))
+        xgb_fi.append(xgb_model.feature_importances_.reshape((7, nx)))
+        
+        # LDA CLASSIF WHEN USING TEST SET ONLY
         classif_splits = list(cv.split(X_test, y_test))
         for isplit, (classif_ix_train, classif_ix_test) in enumerate(classif_splits):
-            model.fit(X_test[classif_ix_train], y_test[classif_ix_train])
+            lda_model.fit(X_test[classif_ix_train], y_test[classif_ix_train])
 
-            scores_test_only.append(scorer(model, X_test[classif_ix_test], y_test[classif_ix_test]))
-        """
-    print(scores,np.mean(scores))
-    print(scores_test_only,np.mean(scores_test_only))
-    return corr, dist, scores, scores_test_only
+            lda_scores_test_only.append(scorer(lda_model, X_test[classif_ix_test], y_test[classif_ix_test]))
+        
+
+    return corr, dist, lda_scores, xgb_scores, xgb_fi, lda_scores_test_only
 
 
 if __name__ == '__main__':
-    exps = [str(n) for n in ["8"]]
-    behav_var  = "all"
-    n1_list = [15]#[2,5,10,15,20,30]
-    n1 = 15
-    corr_list, dist_list, scores_list, scores_test_only_list = [], [], [], []
 
-    freq_ranges = [(5, 8), (8, 13), (13, 30), (128, 132)]
-    freq_nbs = [1, 3, 3, 1]
+    parser = argparse.ArgumentParser(description='PSID_acc')
+
+    parser.add_argument('--exp_idx', type=int, default=1, help='idex of the experiment to run')
+    parser.add_argument('--data_dir', type=str, default='data')
+    parser.add_argument('--nx', type=int, default=15, help='dimension of the latent space')
+    parser.add_argument('--n1', type=int, default=15, help='dimension of the behavior-related latent space')
+
+    args = parser.parse_args()
+
+    data_dir = args.data_dir
+    exp_idx = args.exp_idx
+    nx = args.nx
+    n1 = args.n1
+
+    corr_list, dist_list, xgb_scores_list, lda_scores_list, lda_scores_test_only_list, xgb_fi_list = [], [], [], [], [], []
+
+
+    freq_ranges = [(5, 8), (8, 13), (13, 30)]
+    freq_nbs = [1, 3, 3]
 
     fb = []
     for i_, f in enumerate(freq_ranges):
         points = np.linspace(f[0], f[1], num=freq_nbs[i_] + 1)
         fb += [(points[i], points[i + 1]) for i in range(len(points) - 1)]
 
-    freq_buckets_names = ["all", "artifact","no_artifact" ]
-    freq_buckets_dict = {"all":fb,
-                        "artifact": [fb[-1]], 
-                        "no_artifact" : fb[:-1]
-                        }    
-
-    freq_buckets = "no_artifact"
-
     i_psid_ratio_list = [0.01,0.02,0.05]
 
-    for exp in exps:
-        time_list = []
-        for i_psid_ratio in i_psid_ratio_list:
-            epochs = mne.read_epochs("data/VP" + exp + "_epo.fif")
-            sfreq = epochs.info["sfreq"]
-            ica_model = mne.preprocessing.read_ica("data/VP" + exp + "_ica.fif")
+    
 
-            i_psid = math.floor(sfreq*i_psid_ratio)
-            print("I PSID : ", i_psid)
+    time_list = []
 
-            tstart = time.time()
+    for i_psid_ratio in i_psid_ratio_list:
 
-            
-            
+        epochs = mne.read_epochs(os.path.join(data_dir,"VP" + str(exp_idx) + "_epo.fif"))
+        sfreq = epochs.info["sfreq"]
+        ica_model = mne.preprocessing.read_ica(os.path.join(data_dir,"VP" + str(exp_idx) + "_ica.fif"))
 
-            result_dicts = data_reconstruction(epochs, 
-                                                ica_model, 
-                                                freq_buckets_dict[freq_buckets],
-                                                behav_var=behav_var,
-                                                n1=n1,
-                                                i_psid=i_psid
-                                                )
-            time_list.append(time.time() - tstart)
-            
+        i_psid = math.floor(sfreq*i_psid_ratio)
+        print("I PSID : ", i_psid)
 
+        tstart = time.time()
 
-            with open('results/psid_features_' + exp + "_" + freq_buckets + "_i_" + str(i_psid) + '.pickle', 'wb') as handle:
-                pickle.dump(result_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
-            """
+        result_dicts = signal_to_features(epochs, 
+                                            ica_model, 
+                                            freq_buckets=fb,
+                                            behav_var="all",
+                                            nx=nx,
+                                            n1=n1,
+                                            i_psid=i_psid
+                                            )
+        time_list.append(time.time() - tstart)
+        
 
-            with open('results/psid_features_' + exp + "_" + freq_buckets + "_i_" + str(i_psid) + '.pickle', 'rb') as handle:
-                result_dicts = pickle.load(handle)
-            """
-            corr, dist, scores, scores_test_only = psid_metrics(result_dicts)
-            corr_list.append(corr)
-            dist_list.append(dist)
-            scores_list.append(scores)
-            scores_test_only_list.append(scores_test_only)
+        with open('results/psid_features_' + str(exp_idx) + "_i_" + str(i_psid) + '.pickle', 'wb') as handle:
+            pickle.dump(result_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-        label_list = i_psid_ratio_list
+        corr, dist, lda_scores, xgb_scores, xgb_fi, lda_scores_test_only = psid_metrics(result_dicts)
+        corr_list.append(corr)
+        dist_list.append(dist)
+        lda_scores_list.append(lda_scores)
+        xgb_scores_list.append(xgb_scores)
+        xgb_fi_list.append(xgb_fi)
+        lda_scores_test_only_list.append(lda_scores_test_only)
 
-        plt.scatter(x=range(len(time_list)),y=time_list )
 
-        plt.boxplot(corr_list, labels=label_list)
-        plt.title("Kendall's Tau")
+    label_list = i_psid_ratio_list
+
+    plt.scatter(x=range(len(time_list)),y=time_list )
+
+    plt.boxplot(corr_list, labels=label_list)
+    plt.title("Kendall's Tau")
+    plt.show()
+    plt.boxplot(dist_list, labels=label_list)
+    plt.title("Distance")
+    plt.show()
+
+    plt.boxplot(lda_scores_list, labels=label_list)
+    plt.title("lda classif accuracy")
+    plt.show()
+    plt.boxplot(lda_scores_test_only_list, labels=label_list)
+    plt.title("lda classif accuracy (on test data only)")
+    plt.show()
+
+    plt.boxplot(xgb_scores_list, labels=label_list)
+    plt.title("xgb classif accuracy")
+    plt.show()
+    for xgb_fi in xgb_fi_list:
+        fig, axs = plt.subplots(1,len(xgb_fi))
+        for i,x in enumerate(xgb_fi):
+            axs[i].imshow(x,vmin=0, vmax=1)
         plt.show()
-        plt.boxplot(dist_list, labels=label_list)
-        plt.title("Distance")
-        plt.show()
-        plt.boxplot(scores_list, labels=label_list)
-        plt.title("classif accuracy")
-        plt.show()
-        plt.boxplot(scores_test_only_list, labels=label_list)
-        plt.title("classif accuracy (on test data only)")
-        plt.show()
+
+
 
 
 

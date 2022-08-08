@@ -1,8 +1,7 @@
 from bohb import BOHB
 import bohb.configspace as cs
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from psid_accuracy import data_reconstruction,latent_to_features, psid_metrics
-import contextlib
+from psid_accuracy import signal_to_features, psid_metrics
 from contextlib import contextmanager
 import numpy as np
 import mne
@@ -12,7 +11,10 @@ from sklearn.metrics import accuracy_score, make_scorer
 import math
 import sys, os
 
-@contextmanager
+
+
+@contextmanager 
+### avoids console output during psd_array_multitaper
 def suppress_stdout():
     with open(os.devnull, "w") as devnull:
         old_stdout = sys.stdout
@@ -21,6 +23,8 @@ def suppress_stdout():
             yield
         finally:
             sys.stdout = old_stdout
+
+
 
 def psid_eval(
             n1_ratio,
@@ -33,10 +37,10 @@ def psid_eval(
     n1 = int(math.ceil(nx*n1_ratio))
     print("n1 : ", n1)
 
-    exp = "1"
+    exp = "8"
 
-    freq_ranges = [(5, 8), (8, 13), (13, 30)]#, (128, 132)]
-    freq_nbs = [1, 3, 3]#, 1]
+    freq_ranges = [(5, 8), (8, 13), (13, 30)]
+    freq_nbs = [1, 3, 3]
 
     fb = []
     for i_, f in enumerate(freq_ranges):
@@ -51,7 +55,7 @@ def psid_eval(
     print("i_psid : ", i_psid)
 
     with suppress_stdout():
-        result_dicts = data_reconstruction(epochs, 
+        result_dicts = signal_to_features(epochs, 
                                         ica_model, 
                                         fb,
                                         behav_var="all",
@@ -81,11 +85,6 @@ if __name__ == '__main__':
     
     configspace = cs.ConfigurationSpace([n1_ratio_param, nx_param, i_psid_ratio_param])
     
-    """
-    alpha = cs.UniformHyperparameter('alpha', 0.01, 0.1, log=True)
-    beta = cs.UniformHyperparameter('beta', 0.01, 0.1, log=True)
-    configspace = cs.ConfigurationSpace([alpha, beta])
-    """
     
     opt = BOHB(configspace, evaluate, max_budget=10, min_budget=1, n_proc=1)
 
