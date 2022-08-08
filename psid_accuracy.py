@@ -173,7 +173,8 @@ def latent_to_features(xPred,freq_buckets,sfreq=300):
     
     return X_psd_m
 
-def psid_metrics(result_dicts):
+def psid_metrics(result_dicts,
+                nx = 8):
 
     dist = []
     corr = []
@@ -261,7 +262,6 @@ if __name__ == '__main__':
     i_psid_ratio_list = [0.01,0.02,0.05]
     for i_psid_ratio in i_psid_ratio_list:
 
-        """
 
         epochs = mne.read_epochs(os.path.join(data_dir,"VP" + str(exp_idx) + "_epo.fif"))
         sfreq = epochs.info["sfreq"]
@@ -288,10 +288,10 @@ if __name__ == '__main__':
         """
         with open('results/psid_features_result_dicts.pickle', 'rb') as handle:
             features_dicts = pickle.load(handle)#, protocol=pickle.HIGHEST_PROTOCOL)
+        """
 
+        corr, dist, lda_scores, xgb_scores, xgb_fi, lda_scores_test_only = psid_metrics(features_dicts, nx)
 
-
-        corr, dist, lda_scores, xgb_scores, xgb_fi, lda_scores_test_only = psid_metrics(features_dicts)
         corr_list.append(corr)
         dist_list.append(dist)
         lda_scores_list.append(lda_scores)

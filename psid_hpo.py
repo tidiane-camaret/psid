@@ -37,8 +37,6 @@ def psid_eval(
     n1 = int(math.ceil(nx*n1_ratio))
     print("n1 : ", n1)
 
-    exp = "8"
-
     freq_ranges = [(5, 8), (8, 13), (13, 30)]
     freq_nbs = [1, 3, 3]
 
@@ -64,7 +62,7 @@ def psid_eval(
                                         n1=n1,
                                         i_psid=i_psid
                                         )
-    corr, dist, scores, scores_test_only = psid_metrics(result_dicts)
+    corr, dist, scores, scores_test_only = psid_metrics(result_dicts, nx)
 
     print("nx : ", nx)
     print("n1 : ", n1)
@@ -78,13 +76,13 @@ def evaluate(params, n_iterations):
     return psid_eval(**params)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='PSID_acc')
+    parser = argparse.ArgumentParser(description='PSID_hpo')
 
     parser.add_argument('--exp_idx', type=int, default=1, help='idex of the experiment to run')
     parser.add_argument('--data_dir', type=str, default='data')
 
     args = parser.parse_args()
-    
+
     data_dir = args.data_dir
     exp_idx = args.exp_idx
     
@@ -96,7 +94,7 @@ if __name__ == '__main__':
     configspace = cs.ConfigurationSpace([n1_ratio_param, nx_param, i_psid_ratio_param])
     
     
-    opt = BOHB(configspace, evaluate, max_budget=10, min_budget=1, n_proc=1)
+    opt = BOHB(configspace, evaluate, max_budget=1, min_budget=1, n_proc=1)
 
     logs = opt.optimize()
     print(logs)
