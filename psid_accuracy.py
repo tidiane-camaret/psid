@@ -286,7 +286,7 @@ if __name__ == '__main__':
         with open('results/psid_features_' + str(exp_idx) + "_i_" + str(i_psid) + '.pickle', 'wb') as handle:
             pickle.dump(features_dicts, handle, protocol=pickle.HIGHEST_PROTOCOL)
         """
-        with open('results/psid_features_result_dicts.pickle', 'rb') as handle:
+        with open('results/psid_features_' + str(exp_idx) + "_i_" + str(i_psid) + '.pickle', 'rb') as handle:
             features_dicts = pickle.load(handle)#, protocol=pickle.HIGHEST_PROTOCOL)
         """
 

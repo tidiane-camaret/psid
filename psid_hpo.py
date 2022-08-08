@@ -62,14 +62,14 @@ def psid_eval(
                                         n1=n1,
                                         i_psid=i_psid
                                         )
-    corr, dist, scores, scores_test_only = psid_metrics(result_dicts, nx)
+    corr, dist, lda_scores, xgb_scores, xgb_fi, lda_scores_test_only = psid_metrics(result_dicts, nx)
 
     print("nx : ", nx)
     print("n1 : ", n1)
     print("i_psid : ", i_psid)
-    print(np.mean(scores), " ", np.std(scores))
+    print(np.mean(lda_scores), " ", np.std(lda_scores))
 
-    return 1 - np.mean(scores)
+    return 1 - np.mean(lda_scores)
 
 
 def evaluate(params, n_iterations):
